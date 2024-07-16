@@ -1,0 +1,106 @@
+---
+title: "Image Finder"
+author: "Robin"
+date: "29.10.21"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+```{r}
+rm(list = ls())
+```
+
+```{r setup, include=FALSE}
+.libPaths(file.path("C:", "RLibNew")) # Set path to packages
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(readxl)
+```
+
+Path to images:
+\\vsrv-fileserver.casra.local\Archiv\3_Archived Projects\MiKu_SGATO\SGATO WP3\Studie 1_Rating Studie\Hauptstudie\Content_Hauptstudie\Rohmaterial mit Rahmen
+
+
+```{r}
+MeanRatingsImages <- readRDS(here("Data", "Rds",  "Ratings_Images.Rds")) %>%
+  ungroup()
+
+ResultatePerformancestudie<- read_excel(here("Data", "Excel", "Abfrage_Resultate_SGATO_Performancestudie_Haupt_20180514_01_PaSc.xlsx"))
+
+ResultatePerformancestudie %>%
+  group_by(targetAnswer) %>%
+  summarise(n = n())
+
+ResultatePerformancestudie %>%
+  filter(targetAnswer == "NOK") %>%
+  group_by(ContentName) %>%
+  summarise(
+    n = n(),
+    HR = sum(givenAnswer == "OK")/n())
+
+```
+
+
+```{r}
+MeanRatingsImagesWide <- MeanRatingsImages %>%
+  select(-Block, Sd_Image) %>%
+  pivot_wider(names_from = "Item", id_cols = "Name_Full", values_from = "Mean_Image")
+
+```
+
+
+
+```{r}
+unique(MeanRatingsImages$Item)
+```
+
+
+## Alignment artifacts
+
+```{r}
+MeanRatingsImages %>%
+  filter(Item == "Ausrichtung") %>%
+  arrange(desc(Mean_Image))
+```
+
+
+## Placement artifacts
+
+```{r}
+MeanRatingsImages %>%
+  filter(Item == "Platzierung") %>%
+  arrange(desc(Mean_Image))
+```
+
+
+## Unrealistic Scenarios
+
+
+```{r}
+MeanRatingsImages %>%
+  filter(Item == "Szenario") %>%
+  arrange(desc(Mean_Image))
+```
+
+```{r}
+MeanRatingsImages %>%
+  filter(Item == "Szenario") %>%
+  arrange(Mean_Image)
+```
+
+# Realistic Images
+
+```{r}
+MeanRatingsImagesWide %>%
+  filter(Szenario < 3 & Ausrichtung < 2 & Platzierung < 2) %>%
+  arrange(desc(Popout))
+```
+

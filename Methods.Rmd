@@ -1,0 +1,115 @@
+---
+title: "Methods"
+author: "Robin"
+date: "18 11 2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.path = "Plots/Methods/", # Ordner in dem die Grafiken gespeichert werden
+                      dpi = 300, # Auflösung der Grafiken,
+                      fig.height = 4.78, # Hohe der Grafiken (Zoll). 4.78 für
+                      fig.width = 6, # Breite der Grafiken (Zoll). 9.1 fü
+                      dev = "jpeg",
+                      warning = FALSE
+                      )
+```
+
+
+```{r}
+library(tidyverse)
+library(here)
+library(lubridate)
+```
+
+
+```{r}
+source(here("src",  "functions.R"))
+```
+
+```{r}
+InfosImages <- readRDS(here("Data", "Rds", "InfosImages.rds")) %>%
+  ungroup()
+
+FTIReport2016 <- readRDS(here("Data", "Rds", "FTIReport2016.rds")) %>%
+  ungroup()
+
+FTIReport2017 <- readRDS(here("Data", "Rds", "FTIReport2017.rds"))%>%
+  ungroup()
+
+```
+
+## Data cleaning
+
+```{r}
+
+FTIReport2016 <- FTIReport2016 %>%
+  select(Startdatum, Enddatum, Verbotener.Gegenstand)
+
+
+FTIReport2017 <- FTIReport2017 %>%
+  select(Startdatum, Enddatum, Verbotener.Gegenstand)
+
+FTIReport <- rbind(FTIReport2016, FTIReport2017)
+
+FTIReport <- FTIReport %>%
+  right_join(
+    select(InfosImages, Gefahrobjekt),
+    by = c("Verbotener.Gegenstand"  = "Gefahrobjekt"))
+
+FTIReport <- FTIReport %>%
+  mutate_at(.vars = c("Startdatum", "Enddatum"), as_date, format = "%d.%m.%Y")
+
+FTIReport <- FTIReport %>%
+  group_by(Verbotener.Gegenstand) %>%
+  summarise(
+    Startdatum = min(Startdatum, na.rm = T),
+    Enddatum = max(Enddatum, na.rm = T))
+
+```
+
+## Sehwinkel
+
+Specs S24E650BW: https://www.displayspecifications.com/en/model/776be08
+
+```{r}
+width <- 52 #cm
+heigth <- 32
+distToScreener <- 60
+```
+
+**Rating Study**
+
+```{r}
+widthTIPIm = width * .666
+
+WinkelWidth <- rad2deg(atan(widthTIPIm/distToScreener)) 
+
+WinkelHeigth <- rad2deg(atan(heigth/distToScreener)) 
+```
+
+```{r}
+WinkelWidth
+WinkelHeigth
+```
+## Summar View difficulty of reports
+
+```{r}
+FTIReport %>%
+  ungroup() %>%
+  summarise(
+    Start = min(Startdatum, na.rm = T),
+    End = max(Enddatum, na.rm = T),
+    nNaStart = sum(is.na(Startdatum)),
+    nNaEnd = sum(is.na(Enddatum)),
+    nRows = n()
+  )
+```
+

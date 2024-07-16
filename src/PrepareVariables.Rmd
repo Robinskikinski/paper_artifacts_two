@@ -1,0 +1,559 @@
+---
+title: "CreateDFs"
+author: "Robin"
+date: "26 9 2021"
+output: html_document
+---
+
+```{r include=FALSE}
+.libPaths(file.path("C:", "RLibNew")) # Set path to packages
+
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.path = "Plots/CreateDfs/", # Ordner in dem die Grafiken gespeichert werden
+                      dpi = 300, # Auflösung der Grafiken,
+                      fig.height = 4.78, # Hohe der Grafiken (Zoll). 4.78 für
+                      fig.width = 6, # Breite der Grafiken (Zoll). 9.1 fü
+                      dev = "jpeg",
+                      warning = FALSE
+                      )
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(here)
+```
+
+
+## Load Views
+
+```{r}
+ResultatePerformancestudie<- read_excel(here("Data", "Excel", "Abfrage_Resultate_SGATO_Performancestudie_Haupt_20180514_01_PaSc.xlsx"))
+
+MeanRatingsImages <- readRDS(here("Data", "Rds",  "Ratings_Images.Rds")) %>%
+  ungroup()
+
+InfosImages <- readRDS(here("Data", "Rds", "InfosImages.rds")) %>%
+  ungroup() # Hit/Miss
+
+InBagRDS <- readRDS(here("Data", "Rds", "df_in_bag.RDS")) %>%
+  ungroup()
+
+# Tip rates to calulate real FTI view difficulty
+FTIReport2016 <- readRDS(here("Data", "Rds", "FTIReport2016.rds")) %>%
+  ungroup()
+
+FTIReport2017 <- readRDS(here("Data", "Rds", "FTIReport2017.rds"))%>%
+  ungroup()
+
+ResultsOptionalArtifacts <- readRDS(here("Data", "Rds", "RatinsOptional.Rds"))  %>%
+  ungroup()
+#Probanden haben manchmal mehrmals ausgewählt.
+# Manchmal einfach nichts dann = 0
+
+## For test
+
+ratings_all <- readRDS(here("Data", "Rds", "ratings_icc.Rds"))
+```
+
+
+
+
+## DF with mean rating and performance
+
+**Clean up performance data**
+
+```{r}
+ResultatePerformancestudie <- ResultatePerformancestudie %>%
+  mutate(ImageName = str_sub(ContentName, 1, 21),
+         ImageType = ifelse(str_detect(ContentName, "bg"), "N", "SN"))
+
+ResultatePerformancestudie <- ResultatePerformancestudie %>%
+  filter(
+    str_detect(Username, "VPN") &
+    BlockName != "Training" &
+    ImageType == "SN")
+
+
+PerformanceAndRatingsImages <- ResultatePerformancestudie %>%
+  group_by(ImageName) %>%
+  summarise(N = n(),
+            DR_Mark =
+              sum(
+                givenAnswer=="NOK" &
+                  targetAnswer=="NOK" &
+                  IsCorrectlySpotted == "1")/n(),
+            DR = sum(givenAnswer=="NOK" & targetAnswer=="NOK")/n(),
+            Cor_Mark = sum(IsCorrectlySpotted == "1")/ n(),
+            RT_Hit = mean(
+              ActionButtonReactionTimeMs[givenAnswer=="NOK" & targetAnswer=="NOK"])/1000
+            )
+
+```
+
+```{r}
+MeanRatingsImages <- MeanRatingsImages %>%
+  mutate(ImageName = str_sub(Name_Full,1, 21))
+
+InBagRDS <- InBagRDS %>%
+  mutate(ImageName = str_sub(filename,1, 21)) %>%
+  select(-filename)
+
+unique(MeanRatingsImages$Item)
+
+MeanRatingsImages %>%
+  filter(Item == "Alignment Artifact" | Item == "Unrealistic Scenario") %>%
+  group_by(Item) %>%
+  summarise(
+    Mean = mean(Mean_Image)
+  )
+
+
+MeanRatingsImages %>%
+  filter(Item == "Alignment Artifact" | Item == "Unrealistic Scenario") %>%
+  arrange(Name_Full)
+
+MeanRatingsImages
+  
+```
+
+## Check whether the same blocks (control for rater/ performer group)
+
+```{r}
+rater_image_group <- ratings_all %>%
+  group_by(Name, Block) %>%
+  summarise(sample_size = di(Pro)) %>%
+  ungroup()
+
+perf_image_group <- ResultatePerformancestudie %>%
+  group_by(ImageName, BlockName) %>%
+  summarise(n = n()) %>%
+  ungroup()
+```
+
+**Calcualtion of real view difficulty**
+
+```{r}
+FTI_2017 <- FTIReport2017 %>%
+  select(Verbotener.Gegenstand, MR, Anzeigen_sum)
+
+FTI_2016 <- FTIReport2016 %>%
+  filter(SD == "KOA") %>%
+  select(Verbotener.Gegenstand, MR, Anzeigen_sum) %>%
+  mutate(MR = str_sub(MR, 1, -2),
+         MR = as.numeric(MR)/100)
+
+FTI_All <- rbind(FTI_2017,
+                 FTI_2016
+                 )
+
+#Kommen einige FTIs mehrmals vor?
+FTI_All <- FTI_All %>%
+  group_by(Verbotener.Gegenstand) %>%
+  mutate(N_Occ = row_number()) %>%
+  filter(N_Occ == 1) %>% 
+  select(-N_Occ)
+```
+
+### Clean up Mean ratings
+
+```{r}
+MeanRatingsImages <- MeanRatingsImages %>%
+  mutate(Item =
+           case_when(
+             Item == "Platzierung" ~ "Placement Artifact",
+             Item == "Ausrichtung" ~ "Alignment Artifact",
+             Item == "Artefakt" ~ "Artificial in General",
+             Item == "Szenario" ~ "Unrealistic Scenario",
+             Item == "Ansicht" ~ "FTI Targ. View Diff.",
+             Item == "Unordnung" ~ "Clutter",
+             Item == "Überlagerung" ~ "Superposition",
+             Item == "Undurchsichtigkeit" ~ "Opacity",
+             TRUE ~ as.character(Item)
+  ))
+
+```
+
+### Join them
+
+```{r}
+InfosImages <- InfosImages %>%
+  select(Name, Performance, Zeitperiode, Kategorie, Gefahrobjekt)
+
+PerformanceAndRatingsImages <- PerformanceAndRatingsImages %>%
+  left_join(MeanRatingsImages, by = "ImageName") %>%
+  left_join(InfosImages, by = c("ImageName" = "Name")) %>%
+  left_join(InBagRDS)
+```
+```{r}
+PerformanceAndRatingsImages <- PerformanceAndRatingsImages %>%
+  mutate(ImageDifficulty = 1-DR)
+```
+
+
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImages %>%
+  select(-Sd_Image) %>%
+  spread(Item, Mean_Image)
+
+
+#Clutter and Opacity to Bag Complexity
+
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  rowwise() %>%
+  mutate(Bag_Complexity = mean(Clutter, Opacity)) %>%
+  ungroup() %>%
+  left_join(FTI_All, by = c("Gefahrobjekt" = "Verbotener.Gegenstand"))
+
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  rename(RealFTIViewDiffic = MR)
+```
+
+```{r}
+names(PerformanceAndRatingsImagesWide) <- names(PerformanceAndRatingsImagesWide) %>%
+  str_remove_all(" ") #Make Col Names valid
+```
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  mutate(
+    LogBagComplexity = log(Bag_Complexity),
+    LogSuperposition = log(Superposition))
+```
+
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  mutate(
+    across(
+      c(
+        AlignmentArtifact,
+        RealFTIViewDiffic,
+        LogBagComplexity,
+        LogSuperposition,
+        PlacementArtifact,
+        UnrealisticScenario
+      ),
+      .fns = scale,
+      .names = "{.col}Z")
+    )
+```
+
+
+## Main artifacts, IBFs, and other chars
+
+```{r}
+FreqRepMainAIBFs <-  PerformanceAndRatingsImages %>%
+  mutate(RatingRd = round(Mean_Image)) %>%
+  group_by(Performance, Item, RatingRd) %>%
+  summarise(nImages = n())
+```
+
+```{r}
+FreqRepMainAIBFs <- FreqRepMainAIBFs %>%
+  rowwise() %>%
+  mutate(nImagesCorr = ifelse(Performance == 
+    "Miss", nImages/25 * 10, nImages/75 * 90))
+
+FreqRepMainAIBFs <- FreqRepMainAIBFs %>%
+  mutate(PercentageCorr =nImagesCorr/600 * 100)
+
+# Check
+FreqRepMainAIBFs %>%
+  group_by(Item) %>%
+  summarise(PercTotal = sum(PercentageCorr)) # Passt
+
+FreqRepMainAIBFs <- FreqRepMainAIBFs %>%
+  group_by(Item, RatingRd) %>%
+  summarise(PercentageCorr = sum(PercentageCorr))
+```
+**Adding absent ratings as 0 zero ratings**
+
+```{r}
+FreqRepMainAIBFs <- FreqRepMainAIBFs %>%
+  fill_empty_ratings(nameRatingVar = "RatingRd")
+```
+
+
+
+
+```{r}
+SumPrevArtsUnrScIm <- PerformanceAndRatingsImagesWide %>%
+  select(
+    ImageName,
+    Performance,
+    FTI_In_Bag,
+    AlignmentArtifact,
+    PlacementArtifact,
+    UnrealisticScenario,
+    ArtificialinGeneral) %>%
+  mutate_if(is.numeric, function(x) round(x) >= 5)
+
+SumPrevArtsUnrScIm <- SumPrevArtsUnrScIm %>%
+  mutate(
+    AlOrPlace = AlignmentArtifact | PlacementArtifact,
+    AlOrPlaceOrSce= AlignmentArtifact | PlacementArtifact | UnrealisticScenario
+  )
+
+SumPrevArtsUnrScIm <- SumPrevArtsUnrScIm %>%
+  pivot_longer(
+    AlignmentArtifact:AlOrPlaceOrSce,
+    names_to = "Issue",
+    values_to = "Present")
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrScIm %>%
+  group_by(Performance, Issue) %>%
+  summarise(nTIPImages = sum(Present)) %>%
+  ungroup() %>%
+  mutate(
+    nImagesCorr = n_cor_for_oversampling(nTIPImages, Performance)
+    )
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrSc %>%
+  group_by(Issue) %>%
+  summarise(
+    nTIPImages = sum(nTIPImages),
+    nTIPImagesCorr = sum(nImagesCorr)
+  )
+
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrSc %>%
+  ungroup() %>%
+  mutate(
+    Prevalence = nTIPImages/600,
+    PrevalenceCorr = nTIPImagesCorr/600
+  )
+```
+
+
+### In bag vs. not in bag
+```{r}
+nImagesInBag <- sum(PerformanceAndRatingsImagesWide$FTI_In_Bag)
+nImagesInBag
+
+nImagesNotInBag <- sum(!PerformanceAndRatingsImagesWide$FTI_In_Bag)
+nImagesNotInBag
+
+nImagesBCMed <- sum(PerformanceAndRatingsImagesWide$Bag_Complexity > 4)
+nImagesBCMed
+
+nImagesNotBCMed <- sum(!PerformanceAndRatingsImagesWide$Bag_Complexity > 4)
+nImagesNotBCMed
+```
+
+```{r}
+FreqWInBAG <- PerformanceAndRatingsImages %>%
+  mutate(MeanImageR = round(Mean_Image)) %>%
+  group_by(FTI_In_Bag, Item, MeanImageR) %>%
+  summarise(nRatings = n())
+
+FreqWInBAG <- FreqWInBAG %>% #Anpassung an Vorkommen 
+  ungroup() %>%
+  mutate(Percentage = case_when(
+    FTI_In_Bag ~ nRatings/nImagesInBag * 100,
+    !FTI_In_Bag ~ nRatings/nImagesNotInBag * 100
+  )
+  )
+
+FreqMedBC <- PerformanceAndRatingsImages %>%
+  group_by(ImageName) %>%
+  mutate(BagComlMed = mean(Mean_Image[Item == "Clutter"], Mean_Image[Item == "Opacity"]) > 4) %>%
+  mutate(MeanImageR = round(Mean_Image)) %>%
+  group_by(BagComlMed, Item, MeanImageR) %>%
+  summarise(nRatings = n())
+
+FreqMedBC <- FreqMedBC %>% #Anpassung an Vorkommen 
+  mutate(Percentage = case_when(
+    BagComlMed ~ nRatings/nImagesBCMed * 100,
+    !BagComlMed ~ nRatings/nImagesNotBCMed * 100
+  )
+  )
+```
+
+
+```{r}
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScIm %>%
+  group_by(FTI_In_Bag, Issue) %>%
+  summarise(nTIPImages = sum(Present)) %>%
+  ungroup()
+
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScInB %>%
+  group_by(FTI_In_Bag, Issue) %>%
+  summarise(
+    nTIPImages = sum(nTIPImages)
+  )
+
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScInB %>% #Anpassung an Vorkommen 
+  ungroup() %>%
+  mutate(Prevalence = case_when(
+    FTI_In_Bag ~ nTIPImages/nImagesInBag,
+    !FTI_In_Bag ~ nTIPImages/nImagesNotInBag
+  )
+  )
+```
+
+## Optional artifacts
+
+### Clean up optional artifacts
+
+**Level: Single rating of screener**
+
+```{r}
+ResultsOptionalArtifacts <- ResultsOptionalArtifacts %>%
+  mutate(Item =
+           case_when(
+             Item == "Farbe" ~ "Color Artifact",
+             Item == "Auflösung" ~ "Resolution Artifact",
+             Item == "Grösse" ~ "Size Artifact",
+             Item == "Kanten" ~ "Edges Artifact",
+             Item == "Verzerrung" ~ "Distortion Artifact"
+  ))
+
+ResultsOptionalArtifacts <- ResultsOptionalArtifacts %>%
+  mutate(Rating = ifelse(Med == 0, 1, Med)) %>%
+  select(-Med, -N, -Entscheidung)
+
+#Manchmal Rater mehrmals gleiches ausgewählt (N) und darum Median. Falls nichts,
+#angegeben, war 0. Darum zu eins -> kein Artefakt. Ausprobiert oder so. 
+```
+
+
+**Level: Image summary of ratings thereof**
+
+```{r}
+ResImgOptArtLong <- ResultsOptionalArtifacts %>%
+  group_by(Name, Item) %>%
+  summarise(MeanRatingOriginal = mean(Rating),
+            nRater = n())
+
+ResImgOptArtLong <- ResImgOptArtLong %>%
+  ungroup() %>%
+  mutate(
+    MeanRatingWOmitIs1 = (MeanRatingOriginal * nRater + 1 * (12 - nRater))/12,
+    MeanRatingWOmitIs1R = round(MeanRatingWOmitIs1))
+#Set 1, if not rated
+
+ResImgOptArtWide = ResImgOptArtLong %>%
+  pivot_wider(
+    id_cols = c(Name),
+    names_from = Item,
+    values_from = c(MeanRatingWOmitIs1R)
+    )
+
+ResImgOptArtWide <- InfosImages %>% 
+  select(Name, Performance) %>%
+  left_join(ResImgOptArtWide, by = c("Name")) %>%
+  left_join(InBagRDS, by = c("Name" = "ImageName"))
+# Bilder hinzufügen, die nicht bewertet wurden. (Fehlen ansonsten) &
+# Hinzufügen von In Bag Info.
+
+ResImgOptArtWide[is.na(ResImgOptArtWide)] = 1 #1 Falls nichts
+
+ResImgOptArtLong <- ResImgOptArtWide %>%
+  gather("Item", "Rating", 3:7)
+```
+
+**Corrected prevalence for representativity**
+
+```{r}
+FreqOptCorLong <- ResImgOptArtLong %>%
+  group_by(Item,Performance, Rating) %>%
+  summarise(nImages = n())
+
+FreqOptCorLong <- FreqOptCorLong %>%
+  rowwise() %>%
+  mutate(nImagesCorr = ifelse(Performance == 
+    "Miss", nImages/25 * 10, nImages/75 * 90))
+#Correcting for oversampling of misses
+
+FreqOptCorLong <- FreqOptCorLong %>%
+  mutate(PercentageCorr =nImagesCorr/600 * 100)
+
+# Check
+FreqOptCorLong %>%
+  group_by(Item) %>%
+  summarise(PercTotal = sum(PercentageCorr)) # Passt
+
+FreqOptCorLong <- FreqOptCorLong %>%
+  group_by(Item, Rating) %>%
+  summarise(PercentageCorr = sum(PercentageCorr))
+```
+
+
+```{r}
+FreqOptCorLong <- FreqOptCorLong %>%
+  fill_empty_ratings(nameRatingVar = "Rating") %>%
+  arrange(Item, Rating)
+
+FreqOptCorWide <- FreqOptCorLong %>%
+  pivot_wider(
+    id_cols = "Item",
+    names_from = "Rating",
+    values_from = "PercentageCorr",
+    names_prefix = "Rating_"
+    )
+
+```
+
+**Prevalence FTI in bag\FTI not in bag**
+
+```{r}
+FreqOptInBagLong <- ResImgOptArtLong %>%
+  group_by( Item,FTI_In_Bag, Rating) %>%
+  summarise(nRatings = n())
+
+ResImgOptArtWide %>%
+  group_by(FTI_In_Bag) %>%
+  summarise(n = n())
+
+FreqOptInBagLong <- FreqOptInBagLong %>%
+  ungroup() %>%
+  mutate(FTI_In_Bag = as.logical(FTI_In_Bag)) %>%
+  mutate(Percentage = case_when(
+    FTI_In_Bag ~ nRatings/nImagesInBag * 100,
+    !FTI_In_Bag ~ nRatings/nImagesNotInBag * 100
+  )
+  )
+```
+
+
+Kann man einfach gleich wieder zurückrechnen? Wahrscheinlihch nicht sondern bräcuhte eine Tabelle (InBag/NotInBag vs. HitMisses) mit Wahrscheinlichkeiten, wenn nicht verzerrt und eine mit verzerrt. Aber wir wissen nicht, wie viel Hits resp. Misses es gegeben hätte bei NotInBag, nicht einfach 90:10. 
+
+```{r}
+FreqOptInBagWide <- FreqOptInBagLong %>%
+  pivot_wider(
+    id_cols = c("Item","FTI_In_Bag"), 
+    names_from = "Rating",
+    values_from = "Percentage",
+    names_prefix = "Rating_"
+    )
+
+FreqOptInBagWide <- FreqOptInBagWide %>%
+  mutate(Rating_5 = 0,
+         Rating_6 = 0,
+         Rating_7 = 0)
+
+
+FreqOptInBagWide[is.na(FreqOptInBagWide)] <- 0
+
+FreqOptInBagLong <- FreqOptInBagWide %>%
+  pivot_longer(
+    cols = 3:9,
+    names_to = "Rating",
+    values_to = "Percentage")
+
+FreqOptInBagLong <- FreqOptInBagLong %>%
+  mutate(
+    Rating = str_remove(Rating, "Rating_"),
+    Rating = as.numeric(Rating))
+```
+
+## Save models
+
+```{r}
+PerformanceAndRatingsImagesWide %>%
+  write_rds(here("Data", "PerformanceAndRatingsImagesWide.rds"))
+```
+
+
