@@ -7,3 +7,9 @@
 *.doc
 renv/
 renv.lock
+Data/
+Plots/
+sgatoR.Rproj
+.Rprofile
+Paper - Verknüpfung.lnk
+PrepareVariables.md
