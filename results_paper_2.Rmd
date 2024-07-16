@@ -1,0 +1,757 @@
+---
+title: "Results Paper 2"
+author: "Robin"
+date: "2 8 2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+```{r}
+rm(list = ls())
+```
+
+
+```{r setup, include=FALSE}
+#.libPaths(file.path("C:", "RLibNew")) # Set path to packages
+
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.path = "Plots/Paper2/", # Ordner in dem die Grafiken gespeichert werden
+                      dpi = 300, # Auflösung der Grafiken,
+                      fig.height = 4.78, # Hohe der Grafiken (Zoll). 4.78 für
+                      fig.width = 6, # Breite der Grafiken (Zoll). 9.1 fü
+                      dev = "jpeg",
+                      warning = FALSE
+                      )
+```
+
+
+## Goal
+
+The prevalence of artifacts and which image characteristics promote them.
+
+  * Frequency Plot
+  * Correlations
+  
+## Loading libraries, functions and exclusion criteris
+
+```{r}
+renv::status()
+```
+
+
+
+```{r}
+#install.packages("dummies")
+#install.packages("fastDummies")
+library(fastDummies)
+library(multilevel)
+library(car)
+library(knitr)
+library(lavaan)
+library(tidyverse)
+library(readxl)
+library(here)
+library(apa)
+library(psych)
+library(irr)
+library(cowplot)
+library(apaTables)
+library(Hmisc)
+library(kableExtra)
+#library(knitr)
+library(GGally)
+library(lme4)
+library(cowplot)
+library(MASS)
+#install.packages("multilevel")
+
+
+select <- dplyr::select
+```
+
+```{r}
+?dummy.code
+```
+
+
+```{r}
+if(!exists("theme_casra", mode="function"))
+source(here("src",  "CorporateDesignForR_Beta.R"))
+
+source(here("src",  "functions.R"))
+```
+
+## Loading and clean variables
+
+```{r}
+knit(
+  here("src","PrepareVariables.Rmd"),
+  quiet = T
+  )
+```
+
+```{r}
+PerformanceAndRatingsImagesWide <- read_rds(here("Data", "PerformanceAndRatingsImagesWide.rds"))
+```
+
+## Prepare Data
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  dummy_cols(select_columns = "Block", remove_first_dummy = TRUE)
+```
+
+
+
+
+### Test whether mixed models have to be used
+
+Problem:
+Die einzelnen Beobachtungen könnten nicht unabhängig sein.
+
+Studie 1:
+"The participants were randomly split into four groups as it was notpractically feasible for each screener to rate all 600 images. Each group rated a different set of 150 images, with the order of the images randomly sampled for each screener." 
+
+Checken sind die vier Gruppen von der Ratingstudie gleich, wie die von der Performance Studie?
+
+
+Has group be controlled for?
+
+
+**image difficulty**
+
+```{r}
+with_re <- lmer(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+
+without_re <- lm(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+
+anova(with_re, without_re)
+
+lmer(ImageDifficulty ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
+  performance::icc()
+
+# group should be controlled for
+```
+**superposition**
+
+```{r}
+with_re <- lmer(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+
+without_re <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+
+anova(with_re, without_re)
+
+lmer(LogSuperposition ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
+  performance::icc()
+
+# group has not to be controlled for
+```
+**Alignment Artifact**
+
+```{r}
+with_re <- lmer(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+
+without_re <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+
+anova(with_re, without_re)
+
+lmer(AlignmentArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
+  performance::icc()
+
+# group should be controlled for
+```
+
+**Placement Artifact**
+
+```{r}
+with_re <- lmer(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+
+without_re <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+
+anova(with_re, without_re)
+
+lmer(PlacementArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
+  performance::icc()
+
+# group should be controlled for
+```
+
+
+
+
+```{r}
+model_paper_dummy_all <- '
+#Effect on Uberlagerung
+LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
+
+# Effects on Artifacts
+AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag + Block_2 + Block_3 + Block_4
+
+PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag + Block_2 + Block_3 + Block_4
+
+# inflüsse auf ImageDifficulty
+ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag + Block_2 + Block_3 + Block_4
+
+
+
+## Bag Complexity on Placement over Superposition
+indPLBCbyUB :=  UbBC * PlUb
+
+## Bag Compelxity on Placement
+PLBCtot := indPLBCbyUB + PLBC
+
+
+## Bag Complexity on image difficulty
+indIDBCUb:= UbBC * IDUB
+indIDBCAlig := AlBC * IDAl
+indIDBCPlace := PLBC * IDPL
+
+indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
+
+IDBCtot := indIDBCTotal + IDBC
+
+## FTI in Bag
+indIBAl:= AlIB *  IDAl
+
+
+# Kovarianzen
+AlignmentArtifact ~~ PlacementArtifact
+# LogBagComplexity ~~ FTI_In_Bag
+'
+
+results_model_paper_dummy_all <-sem(model_paper_dummy_all, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+
+
+
+standardizedSolution(results_model_paper_dummy_all) %>%
+  as_tibble() %>%
+  mutate(
+    CI_Low = est.std - 1.96 * se,
+    CI_High = est.std + 1.96 * se
+  )
+
+
+```
+
+```{r}
+model_wo_group <- '
+#Effect on Uberlagerung
+LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
+
+# Effects on Artifacts
+AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
+
+PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
+
+# inflüsse auf ImageDifficulty
+ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
+
+
+
+## Bag Complexity on Placement over Superposition
+indPLBCbyUB :=  UbBC * PlUb
+
+## Bag Compelxity on Placement
+PLBCtot := indPLBCbyUB + PLBC
+
+
+## Bag Complexity on image difficulty
+indIDBCUb:= UbBC * IDUB
+indIDBCAlig := AlBC * IDAl
+indIDBCPlace := PLBC * IDPL
+
+indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
+
+IDBCtot := indIDBCTotal + IDBC
+
+## FTI in Bag
+indIBAl:= AlIB *  IDAl
+
+
+# Kovarianzen
+AlignmentArtifact ~~ PlacementArtifact
+# LogBagComplexity ~~ FTI_In_Bag
+'
+
+results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm", cluster = "Block")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+
+
+
+standardizedSolution(results_model_paper_dummy_all) %>%
+  as_tibble() %>%
+  mutate(
+    CI_Low = est.std - 1.96 * se,
+    CI_High = est.std + 1.96 * se
+  )
+```
+
+
+
+```{r}
+results_model_paper_dummy_all <-sem(model_paper_dummy_all, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm", group = "Block")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+```
+
+
+```{r}
+model_paper_dummy_all_rand_int <- '
+
+level: 1
+
+#Effect on Uberlagerung
+LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
+
+# Effects on Artifacts
+AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
+
+PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
+
+# inflüsse auf ImageDifficulty
+ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
+
+
+## Bag Complexity on Placement over Superposition
+indPLBCbyUB :=  UbBC * PlUb
+
+## Bag Compelxity on Placement
+PLBCtot := indPLBCbyUB + PLBC
+
+
+## Bag Complexity on image difficulty
+indIDBCUb:= UbBC * IDUB
+indIDBCAlig := AlBC * IDAl
+indIDBCPlace := PLBC * IDPL
+
+indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
+
+IDBCtot := indIDBCTotal + IDBC
+
+## FTI in Bag
+indIBAl:= AlIB *  IDAl
+
+# Kovarianzen
+AlignmentArtifact ~~ PlacementArtifact
+# LogBagComplexity ~~ FTI_In_Bag
+
+level: 2
+
+ImageDifficulty ~~ ImageDifficulty + AlignmentArtifact + PlacementArtifact + LogSuperposition
+AlignmentArtifact ~~ AlignmentArtifact + PlacementArtifact + LogSuperposition
+PlacementArtifact ~~ PlacementArtifact + LogSuperposition
+LogSuperposition ~~ LogSuperposition
+
+'
+
+results_model_paper_dummy_all <-sem(
+  model_paper_dummy_all_rand_int,
+  data = PerformanceAndRatingsImagesWide,
+  estimator = "mlm",
+  cluster = "Block")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+
+?standardizedSolution
+
+standardizedSolution(results_model_paper_dummy_all) %>%
+  as_tibble() %>%
+  mutate(
+    CI_Low = est.std - 1.96 * se,
+    CI_High = est.std + 1.96 * se
+  )
+
+
+```
+## Effect of manipulations
+
+```{r}
+cut_off_artif <- 3.5
+eff_size_align <- -0.035
+
+cut_off_med_bc <- log(3.5)
+eff_size_bc_by_align <- .015
+```
+
+
+### Increase of image difficulty when no alignment artifacts would be present
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  mutate(NoAlignmentArtifact = ifelse(
+    AlignmentArtifact > cut_off_artif,
+    cut_off_artif,
+    AlignmentArtifact
+  ))
+
+PerformanceAndRatingsImagesWide %>%
+  summarise(
+    EffectAlignment = mean(AlignmentArtifact * -0.035),
+    EffectNoAlignment = mean(NoAlignmentArtifact * -0.035),
+    Diff = EffectNoAlignment - EffectAlignment 
+  )
+```
+
+```{r}
+MeansAlign <- PerformanceAndRatingsImagesWide %>%
+  summarise(
+    MeanAlign = mean(AlignmentArtifact),
+    MeanOnlyNoAlign = mean(AlignmentArtifact[AlignmentArtifact < 4.5]),
+    MeanOnylAlign = mean(AlignmentArtifact[AlignmentArtifact >= 4.5])
+  ) 
+
+MeansAlign
+
+# Weniger falls keine Artefakte 
+eff_size_align * (MeansAlign[["MeanAlign"]] - MeansAlign[["MeanOnlyNoAlign"]])
+
+# Weniger Erkennung falls 
+eff_size_align * (MeansAlign[["MeanOnylAlign"]] - MeansAlign[["MeanOnlyNoAlign"]])
+
+```
+Vergleich von Bildern mit im Vergleich zu Bildern ohne
+
+
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  mutate(
+    NoAlignmentArtifact2 = ifelse(
+    AlignmentArtifact < cut_off_artif,
+    0,
+    cut_off_artif - AlignmentArtifact))
+
+Summary <- PerformanceAndRatingsImagesWide %>%
+  summarise(
+    IDOrig = mean(ImageDifficulty),
+    IDNoAlign =  mean(ImageDifficulty + NoAlignmentArtifact2 * eff_size_align),
+    Diff = IDNoAlign - IDOrig) %>%
+  t() %>%
+  as_tibble(rownames = "Variable") %>%
+  rename(MissRate = V1)
+
+
+Summary %>%
+  mutate(
+    HR = ifelse(Variable != "Diff", 1-MissRate, MissRate)
+  )
+  
+
+
+```
+### How much less overestimation of 
+
+```{r}
+PerformanceAndRatingsImagesWide <- PerformanceAndRatingsImagesWide %>%
+  mutate(LogBagComplexityMinMed = ifelse(
+    LogBagComplexity < cut_off_med_bc,
+    cut_off_med_bc,
+    LogBagComplexity
+  ))
+
+PerformanceAndRatingsImagesWide %>%
+  summarise(
+    EffBCAli = mean(LogBagComplexity * eff_size_bc_by_align),
+    EFBCminMedAl = mean(LogBagComplexityMinMed * eff_size_bc_by_align),
+    Diff = EffBCAli - EFBCminMedAl 
+  )
+```
+
+3% grösser als Überschetzung durch algnment also lieber nicht angeben 
+
+### Artifacts with FTI in bag and low bag complexity
+
+
+```{r}
+cut_off_med_bc <- 3.5
+cut_off_artif <- 5
+```
+
+
+```{r}
+nImagesInBag <- sum(PerformanceAndRatingsImagesWide$FTI_In_Bag)
+nImagesInBag
+
+nImagesNotInBag <- sum(!PerformanceAndRatingsImagesWide$FTI_In_Bag)
+nImagesNotInBag
+
+nImagesBCMed <- sum(PerformanceAndRatingsImagesWide$Bag_Complexity > cut_off_med_bc)
+nImagesBCMed
+
+nImagesNotBCMed <- sum(PerformanceAndRatingsImagesWide$Bag_Complexity < cut_off_med_bc)
+nImagesNotBCMed
+```
+
+**Overall prevalence**
+```{r}
+
+# Set as artifact, if rating higher than cut_off_artif(5)
+SumPrevArtsUnrScIm <- PerformanceAndRatingsImagesWide %>%
+  mutate(BagComplexityMedToHigh = Bag_Complexity > cut_off_med_bc) %>%
+  select(
+    ImageName,
+    Performance,
+    FTI_In_Bag,
+    BagComplexityMedToHigh,
+    AlignmentArtifact,
+    PlacementArtifact,
+    UnrealisticScenario,
+    ArtificialinGeneral) %>%
+  mutate_if(is.numeric, function(x) round(x) >= cut_off_artif)
+
+# Combinations
+SumPrevArtsUnrScIm <- SumPrevArtsUnrScIm %>%
+  mutate(
+    AlOrPlace = AlignmentArtifact | PlacementArtifact,
+    AlOrPlaceOrSce= AlignmentArtifact | PlacementArtifact | UnrealisticScenario
+  )
+
+SumPrevArtsUnrScIm <- SumPrevArtsUnrScIm %>%
+  pivot_longer(
+    AlignmentArtifact:AlOrPlaceOrSce,
+    names_to = "Issue",
+    values_to = "Present")
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrScIm %>%
+  group_by(Performance, Issue) %>%
+  summarise(nTIPImages = sum(Present)) %>%
+  ungroup() %>%
+  mutate(
+    nImagesCorr = n_cor_for_oversampling(nTIPImages, Performance)
+    )
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrSc %>%
+  group_by(Issue) %>%
+  summarise(
+    nTIPImages = sum(nTIPImages),
+    nTIPImagesCorr = sum(nImagesCorr)
+  )
+
+
+SumPrevArtsUnrSc <- SumPrevArtsUnrSc %>%
+  ungroup() %>%
+  mutate(
+    Prevalence = nTIPImages/600,
+    PrevalenceCorr = nTIPImagesCorr/600
+  )
+```
+
+```{r}
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScIm %>%
+  group_by(FTI_In_Bag, Issue) %>%
+  summarise(nTIPImages = sum(Present)) %>%
+  ungroup()
+
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScInB %>%
+  group_by(FTI_In_Bag, Issue) %>%
+  summarise(
+    nTIPImages = sum(nTIPImages)
+  )
+
+SumPrevArtsUnrScInB <- SumPrevArtsUnrScInB %>% #Anpassung an Vorkommen 
+  ungroup() %>%
+  mutate(Prevalence = case_when(
+    FTI_In_Bag ~ nTIPImages/nImagesInBag,
+    !FTI_In_Bag ~ nTIPImages/nImagesNotInBag
+  )
+  )
+```
+
+```{r}
+SumPrevArtsUnrScMedHiBC <- SumPrevArtsUnrScIm %>%
+  group_by(BagComplexityMedToHigh, Issue) %>%
+  summarise(nTIPImages = sum(Present)) %>%
+  ungroup()
+
+SumPrevArtsUnrScMedHiBC <- SumPrevArtsUnrScMedHiBC %>%
+  group_by(BagComplexityMedToHigh, Issue) %>%
+  summarise(
+    nTIPImages = sum(nTIPImages)
+  )
+
+SumPrevArtsUnrScMedHiBC <- SumPrevArtsUnrScMedHiBC %>% #Anpassung an Vorkommen 
+  ungroup() %>%
+  mutate(Prevalence = case_when(
+    BagComplexityMedToHigh ~ nTIPImages/nImagesBCMed,
+    !BagComplexityMedToHigh ~ nTIPImages/nImagesNotBCMed
+  )
+  )
+```
+
+#### Plot
+
+```{r prev, fig.height=2.5, fig.width=6}
+temp1 <- SumPrevArtsUnrScInB  %>%
+  mutate(Type = ifelse(FTI_In_Bag, "FTI_in_bag", "FTI_not_in_bag")) %>%
+  select(Type, Issue, Prevalence)
+
+temp2 <- SumPrevArtsUnrScMedHiBC  %>%
+  mutate(Type = ifelse(BagComplexityMedToHigh, "MedToHighBC", "LowBC")) %>%
+  select(Type, Issue, Prevalence)
+
+artifact_vec <- c(
+  "AlignmentArtifact",
+  "PlacementArtifact",
+  "AlOrPlace")
+
+type_lev <- c(
+  "Overall",
+  "MedToHighBC",
+  "FTI_in_bag",
+  "LowBC",
+  "FTI_not_in_bag"
+  )
+
+plot_ind <- SumPrevArtsUnrSc %>%
+  select(Issue, PrevalenceCorr) %>%
+  rename(Prevalence = PrevalenceCorr) %>%
+  mutate(Type = "Overall") %>%
+  select(Type, Issue, Prevalence) %>%
+  bind_rows(temp1) %>%
+  bind_rows(temp2)
+
+plot_ind <- plot_ind %>%
+  filter(Issue %in% artifact_vec) %>%
+  mutate(Issue = factor(Issue, levels = rev(artifact_vec))) %>%
+  mutate(Type = factor(Type, levels = rev(type_lev))) 
+
+label_label <- plot_ind %>%
+  filter(Issue == "AlignmentArtifact") %>%
+  mutate(Label = case_when(
+    Type == "Overall" ~ "All images",
+    Type == "FTI_in_bag" ~ "Piece of baggage (e.g. bag)",
+    Type == "FTI_not_in_bag" ~ "FTI on Loose Items in a Tray",
+    Type == "LowBC" ~ "Low bag complexity",
+    Type == "MedToHighBC" ~ "Medium-to-high bag complexity",
+  )) %>%
+  filter(!(Type %in% c("FTI_not_in_bag", "LowBC"))) 
+
+text_size = 3.5
+
+gArti <- plot_ind %>%
+  filter(!(Type %in% c("FTI_not_in_bag", "LowBC"))) %>%
+  ggplot(aes(x = Issue, y = Prevalence, color = Type, fill = Type)) +
+  geom_bar(
+    stat = "identity",
+    position = position_dodge2(width = .4),
+    color = NA) +
+  geom_text(
+    aes(
+      label = paste0(round(Prevalence * 100, 1), "%"),
+      group = Type,
+      y = Prevalence + .015),
+    position = position_dodge(width = .9),
+    hjust = 0,
+    size = text_size) +
+  geom_text(
+    data = label_label,
+    aes(label = Label,
+        y = Prevalence + .15),
+    size = text_size,
+    position = position_dodge(width = .9),
+    hjust = 0) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0,1), labels = scales::percent) +
+  scale_x_discrete(
+    labels = rev(c(
+      "Allignment artifact",
+      "Placement artifact",
+      "Alignment or placement artifact")),
+    expand = c(0,0)) +
+  scale_color_manual(
+    values = rev(c(
+      casraEvenDarkerGray,
+      casraBlueMed,
+      fhnwIndigoBlau
+    ))
+  ) +
+    scale_fill_manual(
+    values = rev(c(
+      casraEvenDarkerGray,
+      casraBlueMed,
+      fhnwIndigoBlau
+    ))
+  ) +
+  theme_casra() +
+  theme(
+    legend.position = "none",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank())
+
+```
+
+
+```{r}
+temp <- PerformanceAndRatingsImagesWide %>%
+  summarise(
+    Overall = mean(DR),
+    FTI_in_bag = mean(DR[FTI_In_Bag]),
+    MedToHighBC = mean(DR[Bag_Complexity > cut_off_med_bc])
+  ) %>%
+  t() %>%
+  as_tibble(rownames = "Type") %>%
+  rename(HitRate = V1) %>%
+  mutate(What = "TIP image difficulty")
+
+gHR <- temp %>%
+  mutate(Type = factor(Type, levels = rev(type_lev))) %>%
+  ggplot(aes(x = What, y = 1-HitRate, color = Type, fill = Type)) +
+    geom_bar(
+    stat = "identity",
+    position = position_dodge2(width = .4),
+    color = NA) +
+  geom_text(
+    aes(
+      label = paste0(round((1-HitRate) * 100, 1), "%"),
+      group = Type,
+      y = (1-HitRate) + .015),
+    position = position_dodge(width = .9),
+    hjust = 0,
+    size = text_size) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0,1), labels = scales::percent)  +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_color_manual(
+    values = rev(c(
+      casraEvenDarkerGray,
+      casraBlueMed,
+      fhnwIndigoBlau
+    ))
+  ) +
+    scale_fill_manual(
+    values = rev(c(
+      casraEvenDarkerGray,
+      casraBlueMed,
+      fhnwIndigoBlau
+    ))
+  ) +
+  theme_casra() +
+  theme(
+    legend.position = "none",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank()) +
+  labs(y = "Miss rate")
+```
+
+
+```{r ov, fig.height=3.5}
+plot_grid(
+  gArti,
+  gHR,
+  ncol = 1,
+  align = "v",
+  axis = "l",
+  labels = c("(a)", "(b)"),
+  rel_heights = c(1, .45))
+```
+
