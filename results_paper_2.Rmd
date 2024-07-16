@@ -40,6 +40,10 @@ The prevalence of artifacts and which image characteristics promote them.
 renv::status()
 ```
 
+```{r}
+#GIt test
+```
+
 
 
 ```{r}
