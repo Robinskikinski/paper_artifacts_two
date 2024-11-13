@@ -37,6 +37,13 @@ The prevalence of artifacts and which image characteristics promote them.
 ## Loading libraries, functions and exclusion criteris
 
 ```{r}
+renv::status()
+```
+
+
+
+
+```{r}
 #renv::snapshot()
 ```
 
@@ -52,7 +59,7 @@ The prevalence of artifacts and which image characteristics promote them.
 library(fastDummies)
 library(multilevel)
 library(car)
-library(knitr)
+#library(knitr)
 library(lavaan)
 library(tidyverse)
 library(readxl)
@@ -64,7 +71,7 @@ library(cowplot)
 library(apaTables)
 library(Hmisc)
 library(kableExtra)
-#library(knitr)
+library(knitr)
 library(GGally)
 library(lme4)
 library(cowplot)
@@ -74,6 +81,7 @@ library(MASS)
 
 
 select <- dplyr::select
+#install.packages("knitr")
 ```
 
 
@@ -125,19 +133,19 @@ Has group be controlled for?
 **image difficulty**
 
 ```{r}
-with_re <- lmer(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+with_block <- lm(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag + Block , data = PerformanceAndRatingsImagesWide) 
 
-without_re <- lm(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+without_block <- lm(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
-anova(with_re, without_re, test = "LRT")
+anova( without_block, with_block)
 
 lmer(ImageDifficulty ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
   performance::icc()
 
 
 # Log-Likelihoods berechnen
-logLik_model1 <- logLik(with_re)
-logLik_model2 <- logLik(without_re)
+logLik_model1 <- logLik(with_block)
+logLik_model2 <- logLik(without_block)
 
 # Log-Likelihood-Ratio berechnen
 LLR <- -2 * (logLik_model1 - logLik_model2)
@@ -148,11 +156,11 @@ LLR
 **superposition**
 
 ```{r}
-with_re <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
+with_block <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
-without_re <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+without_block <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
-anova(with_re, without_re)
+anova(without_block, with_block)
 
 lmer(LogSuperposition ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
   performance::icc()
@@ -162,11 +170,11 @@ lmer(LogSuperposition ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %
 **Alignment Artifact**
 
 ```{r}
-with_re <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
+with_block <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
-without_re <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+without_block <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
-anova(with_re, without_re)
+anova(without_block, with_block)
 
 lmer(AlignmentArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
   performance::icc()
@@ -177,11 +185,11 @@ lmer(AlignmentArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) 
 **Placement Artifact**
 
 ```{r}
-with_re <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
+with_block <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
-without_re <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
+without_block <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
-anova(with_re, without_re)
+anova(without_block, with_block)
 
 lmer(PlacementArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
   performance::icc()
