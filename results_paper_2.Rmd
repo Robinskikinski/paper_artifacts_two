@@ -37,7 +37,7 @@ The prevalence of artifacts and which image characteristics promote them.
 ## Loading libraries, functions and exclusion criteris
 
 ```{r}
-renv::status()
+#renv::snapshot()
 ```
 
 ```{r}
@@ -69,15 +69,13 @@ library(GGally)
 library(lme4)
 library(cowplot)
 library(MASS)
+#install.packages("rmarkdown")
 #install.packages("multilevel")
 
 
 select <- dplyr::select
 ```
 
-```{r}
-?dummy.code
-```
 
 
 ```{r}
@@ -131,17 +129,26 @@ with_re <- lmer(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagC
 
 without_re <- lm(ImageDifficulty ~ RealFTIViewDiffic + LogSuperposition + LogBagComplexity + AlignmentArtifact  + PlacementArtifact + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
-anova(with_re, without_re)
+anova(with_re, without_re, test = "LRT")
 
 lmer(ImageDifficulty ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %>%
   performance::icc()
+
+
+# Log-Likelihoods berechnen
+logLik_model1 <- logLik(with_re)
+logLik_model2 <- logLik(without_re)
+
+# Log-Likelihood-Ratio berechnen
+LLR <- -2 * (logLik_model1 - logLik_model2)
+LLR
 
 # group should be controlled for
 ```
 **superposition**
 
 ```{r}
-with_re <- lmer(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+with_re <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
 without_re <- lm(LogSuperposition ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
@@ -155,7 +162,7 @@ lmer(LogSuperposition ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) %
 **Alignment Artifact**
 
 ```{r}
-with_re <- lmer(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+with_re <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
 without_re <- lm(AlignmentArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
@@ -170,7 +177,7 @@ lmer(AlignmentArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) 
 **Placement Artifact**
 
 ```{r}
-with_re <- lmer(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + (1|Block), data = PerformanceAndRatingsImagesWide) 
+with_re <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag + Block, data = PerformanceAndRatingsImagesWide) 
 
 without_re <- lm(PlacementArtifact ~ RealFTIViewDiffic + LogBagComplexity + FTI_In_Bag, data = PerformanceAndRatingsImagesWide) 
 
@@ -182,7 +189,85 @@ lmer(PlacementArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) 
 # group should be controlled for
 ```
 
+### Different Models
 
+## Original Model
+
+```{r}
+model_wo_group <- '
+#Effect on Uberlagerung
+LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
+
+# Effects on Artifacts
+AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
+
+PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
+
+# inflüsse auf ImageDifficulty
+ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
+
+
+
+## Bag Complexity on Placement over Superposition
+indPLBCbyUB :=  UbBC * PlUb
+
+## Bag Compelxity on Placement
+PLBCtot := indPLBCbyUB + PLBC
+
+
+## Bag Complexity on image difficulty
+indIDBCUb:= UbBC * IDUB
+indIDBCAlig := AlBC * IDAl
+indIDBCPlace := PLBC * IDPL
+
+indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
+
+IDBCtot := indIDBCTotal + IDBC
+
+## FTI in Bag
+indIBAl:= AlIB *  IDAl
+
+
+# Kovarianzen
+AlignmentArtifact ~~ PlacementArtifact
+# LogBagComplexity ~~ FTI_In_Bag
+'
+
+results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+
+
+
+standardizedSolution(results_model_paper_dummy_all) %>%
+  as_tibble() %>%
+  mutate(
+    CI_Low = est.std - 1.96 * se,
+    CI_High = est.std + 1.96 * se
+  )
+```
+
+## Model clustered standard errors 
+
+```{r}
+results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm", cluster = "Block")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+```
+
+
+## Model 4 groups
+
+```{r}
+results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
+                                estimator = "mlm", group = "Block")
+
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+```
+
+## Model with fixed effects
 
 
 ```{r}
@@ -242,69 +327,7 @@ standardizedSolution(results_model_paper_dummy_all) %>%
 
 ```
 
-```{r}
-model_wo_group <- '
-#Effect on Uberlagerung
-LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
-
-# Effects on Artifacts
-AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
-
-PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
-
-# inflüsse auf ImageDifficulty
-ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
-
-
-
-## Bag Complexity on Placement over Superposition
-indPLBCbyUB :=  UbBC * PlUb
-
-## Bag Compelxity on Placement
-PLBCtot := indPLBCbyUB + PLBC
-
-
-## Bag Complexity on image difficulty
-indIDBCUb:= UbBC * IDUB
-indIDBCAlig := AlBC * IDAl
-indIDBCPlace := PLBC * IDPL
-
-indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
-
-IDBCtot := indIDBCTotal + IDBC
-
-## FTI in Bag
-indIBAl:= AlIB *  IDAl
-
-
-# Kovarianzen
-AlignmentArtifact ~~ PlacementArtifact
-# LogBagComplexity ~~ FTI_In_Bag
-'
-
-results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
-                                estimator = "mlm", cluster = "Block")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-
-
-
-standardizedSolution(results_model_paper_dummy_all) %>%
-  as_tibble() %>%
-  mutate(
-    CI_Low = est.std - 1.96 * se,
-    CI_High = est.std + 1.96 * se
-  )
-```
-
-
-
-```{r}
-results_model_paper_dummy_all <-sem(model_paper_dummy_all, data = PerformanceAndRatingsImagesWide,
-                                estimator = "mlm", group = "Block")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-```
+`
 
 
 ```{r}
@@ -364,7 +387,6 @@ results_model_paper_dummy_all <-sem(
 
 summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
 
-?standardizedSolution
 
 standardizedSolution(results_model_paper_dummy_all) %>%
   as_tibble() %>%

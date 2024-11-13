@@ -122,7 +122,7 @@ MeanRatingsImages
 ```{r}
 rater_image_group <- ratings_all %>%
   group_by(Name, Block) %>%
-  summarise(sample_size = di(Pro)) %>%
+  summarise(sample_size = dist(Pro)) %>%
   ungroup()
 
 perf_image_group <- ResultatePerformancestudie %>%
