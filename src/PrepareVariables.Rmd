@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r include=FALSE}
-.libPaths(file.path("C:", "RLibNew")) # Set path to packages
+#.libPaths(file.path("C:", "RLibNew")) # Set path to packages
 
 knitr::opts_chunk$set(echo = TRUE,
                       fig.path = "Plots/CreateDfs/", # Ordner in dem die Grafiken gespeichert werden
@@ -122,7 +122,7 @@ MeanRatingsImages
 ```{r}
 rater_image_group <- ratings_all %>%
   group_by(Name, Block) %>%
-  summarise(sample_size = dist(Pro)) %>%
+  summarise(sample_size = n_distinct(Proband)) %>%
   ungroup()
 
 perf_image_group <- ResultatePerformancestudie %>%
