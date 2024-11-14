@@ -197,83 +197,6 @@ lmer(PlacementArtifact ~ 1 + (1|Block), data = PerformanceAndRatingsImagesWide) 
 # group should be controlled for
 ```
 
-### Different Models
-
-## Original Model
-
-```{r}
-model_wo_group <- '
-#Effect on Uberlagerung
-LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
-
-# Effects on Artifacts
-AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
-
-PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
-
-# inflüsse auf ImageDifficulty
-ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
-
-
-
-## Bag Complexity on Placement over Superposition
-indPLBCbyUB :=  UbBC * PlUb
-
-## Bag Compelxity on Placement
-PLBCtot := indPLBCbyUB + PLBC
-
-
-## Bag Complexity on image difficulty
-indIDBCUb:= UbBC * IDUB
-indIDBCAlig := AlBC * IDAl
-indIDBCPlace := PLBC * IDPL
-
-indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
-
-IDBCtot := indIDBCTotal + IDBC
-
-## FTI in Bag
-indIBAl:= AlIB *  IDAl
-
-
-# Kovarianzen
-AlignmentArtifact ~~ PlacementArtifact
-# LogBagComplexity ~~ FTI_In_Bag
-'
-
-results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
-                                estimator = "mlm")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-
-
-
-standardizedSolution(results_model_paper_dummy_all) %>%
-  as_tibble() %>%
-  mutate(
-    CI_Low = est.std - 1.96 * se,
-    CI_High = est.std + 1.96 * se
-  )
-```
-
-## Model clustered standard errors 
-
-```{r}
-results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
-                                estimator = "mlm", cluster = "Block")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-```
-
-
-## Model 4 groups
-
-```{r}
-results_model_paper_dummy_all <-sem(model_wo_group, data = PerformanceAndRatingsImagesWide,
-                                estimator = "mlm", group = "Block")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-```
 
 ## Model with fixed effects
 
@@ -321,90 +244,100 @@ AlignmentArtifact ~~ PlacementArtifact
 results_model_paper_dummy_all <-sem(model_paper_dummy_all, data = PerformanceAndRatingsImagesWide,
                                 estimator = "mlm")
 
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
 
-
-
-standardizedSolution(results_model_paper_dummy_all) %>%
-  as_tibble() %>%
-  mutate(
-    CI_Low = est.std - 1.96 * se,
-    CI_High = est.std + 1.96 * se
-  )
 
 
 ```
 
-`
+### Model Summary
+
+```{r}
+summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
+
+lavInspect(results_model_paper_dummy_all, "rsquare")
+```
+
+
+### Effect table
+
+```{r}
+effect_table <- parameterEstimates(results_model_paper_dummy_all) %>%
+  as.tibble() %>%
+  filter(op == "~") %>%
+    mutate(
+    effect = paste0(rhs, " -> ", lhs)
+  ) %>%
+  select(effect, est)
+
+temp <- standardizedSolution(results_model_paper_dummy_all) %>%
+  as.tibble() %>%
+  mutate(
+    effect = paste0(rhs, " -> ", lhs)
+  ) %>%
+  select(effect,rhs,lhs,  est.std, ci.lower, ci.upper, pvalue)
+
+effect_table <- effect_table %>%
+  left_join(temp, by = "effect") %>%
+  mutate_at(
+    .vars = c(
+      "est",
+      "est.std",
+      "ci.lower",
+      "ci.upper"),
+    .funs = round,
+    2) %>%
+  mutate(
+    pvalue = round(pvalue, 3)
+  )
+
+effect_table <- effect_table %>%
+  mutate(
+    Type = case_when(
+      effect == "PlacementArtifact -> ImageDifficulty" ~ "H1a",
+      effect == "AlignmentArtifact -> ImageDifficulty" ~ "H1b",
+      effect == "RealFTIViewDiffic -> ImageDifficulty" ~ "H2a",
+      effect == "LogSuperposition -> ImageDifficulty" ~ "H2b",
+      effect == "LogBagComplexity -> ImageDifficulty" ~ "H2c",
+      effect == "LogBagComplexity -> LogSuperposition" ~ "H2d",
+      effect == "LogSuperposition -> PlacementArtifact" ~ "I1",
+      effect == "LogBagComplexity -> PlacementArtifact" ~ "I2",
+      effect == "RealFTIViewDiffic -> AlignmentArtifact" ~ "I3",
+      effect == "LogBagComplexity -> AlignmentArtifact" ~ "I4",
+      effect == "RealFTIViewDiffic -> LogSuperposition" ~ "I5",
+      effect == "FTI_In_Bag -> PlacementArtifact" ~ "I6",
+      effect == "FTI_In_Bag -> AlignmentArtifact" ~ "I7",
+      effect == "FTI_In_Bag -> ImageDifficulty" ~ "I8",
+      effect == "FTI_In_Bag -> LogSuperposition" ~ "I9",
+      TRUE ~ "Rest"
+    )
+  ) %>%
+  arrange(Type, lhs, rhs) %>%
+  mutate(
+    CI_95 = paste0("[", ci.lower, ",", ci.upper, "]")
+  )
+
+
+effect_table %>%
+  select(Type, effect, est, est.std, CI_95, pvalue) %>%
+  kable() %>%
+  kable_styling()
+  
+
+```
 
 
 ```{r}
-model_paper_dummy_all_rand_int <- '
-
-level: 1
-
-#Effect on Uberlagerung
-LogSuperposition ~ RealFTIViewDiffic + UbBC * LogBagComplexity + FTI_In_Bag 
-
-# Effects on Artifacts
-AlignmentArtifact ~ RealFTIViewDiffic +  AlBC * LogBagComplexity + AlIB * FTI_In_Bag
-
-PlacementArtifact ~ PLBC * LogBagComplexity + PlUb * LogSuperposition + FTI_In_Bag
-
-# inflüsse auf ImageDifficulty
-ImageDifficulty ~  RealFTIViewDiffic + IDUB * LogSuperposition + IDBC * LogBagComplexity +  IDAl * AlignmentArtifact + IDPL * PlacementArtifact + FTI_In_Bag
-
-
-## Bag Complexity on Placement over Superposition
-indPLBCbyUB :=  UbBC * PlUb
-
-## Bag Compelxity on Placement
-PLBCtot := indPLBCbyUB + PLBC
-
-
-## Bag Complexity on image difficulty
-indIDBCUb:= UbBC * IDUB
-indIDBCAlig := AlBC * IDAl
-indIDBCPlace := PLBC * IDPL
-
-indIDBCTotal := indIDBCUb + indIDBCAlig + indIDBCPlace
-
-IDBCtot := indIDBCTotal + IDBC
-
-## FTI in Bag
-indIBAl:= AlIB *  IDAl
-
-# Kovarianzen
-AlignmentArtifact ~~ PlacementArtifact
-# LogBagComplexity ~~ FTI_In_Bag
-
-level: 2
-
-ImageDifficulty ~~ ImageDifficulty + AlignmentArtifact + PlacementArtifact + LogSuperposition
-AlignmentArtifact ~~ AlignmentArtifact + PlacementArtifact + LogSuperposition
-PlacementArtifact ~~ PlacementArtifact + LogSuperposition
-LogSuperposition ~~ LogSuperposition
-
-'
-
-results_model_paper_dummy_all <-sem(
-  model_paper_dummy_all_rand_int,
-  data = PerformanceAndRatingsImagesWide,
-  estimator = "mlm",
-  cluster = "Block")
-
-summary(results_model_paper_dummy_all, fit.measures = TRUE, standardized = TRUE)
-
-
 standardizedSolution(results_model_paper_dummy_all) %>%
   as_tibble() %>%
   mutate(
     CI_Low = est.std - 1.96 * se,
     CI_High = est.std + 1.96 * se
-  )
-
-
+  ) %>%
+  as.tibble() %>%
+  select(lhs, op, rhs, est.std)
 ```
+
+
 ## Effect of manipulations
 
 ```{r}
